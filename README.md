@@ -52,6 +52,8 @@ auto-push
 # or
 pushpilot
 # or
+push
+# or
 pilot
 ```
 
@@ -60,7 +62,7 @@ Install once in editable mode:
 ```bash
 pip install -e .
 ```
-Now `pushpilot`, `pilot`, `auto-push`, and `autopush` are accessible in **any terminal window and any project on your computer!**
+Now `pilot`, `push`, `pushpilot`, `auto-push`, and `autopush` are accessible in **any terminal window and any project on your computer!**
 
 ---
 

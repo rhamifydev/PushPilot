@@ -19,8 +19,9 @@ classifiers = [
 ]
 
 [project.scripts]
-pushpilot = "autopush.cli:main"
 pilot = "autopush.cli:main"
+push = "autopush.cli:main"
+pushpilot = "autopush.cli:main"
 auto-push = "autopush.cli:main"
 autopush = "autopush.cli:main"
 
