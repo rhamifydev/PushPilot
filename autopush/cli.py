@@ -37,8 +37,8 @@ def banner():
     print(
         f"""
 ╔═════════════════════════════════════════════════════════════╗
-║                   AUTOPUSH v{__version__}                           ║
-║   Professional Multi-Framework Git & GitHub Automation      ║
+║                   PUSHPILOT v{__version__}                          ║
+║   Intelligent Multi-Framework Git & GitHub Autopilot        ║
 ╚═════════════════════════════════════════════════════════════╝
 """
     )
@@ -46,6 +46,7 @@ def banner():
 
 def run_single_sync(
     root: Path,
+    repo_url: str | None = None,
     message: str | None = None,
     branch: str | None = None,
     remote: str = "origin",
@@ -62,7 +63,7 @@ def run_single_sync(
     print(f"[STACK] Detected: {stack.language} | Framework: {stack.framework or 'None'} | Ecosystem: {stack.ecosystem}")
 
     # 2. Ensure Git & Remote Setup
-    ensure_repo_ready(root, interactive=interactive)
+    ready, remote_was_just_linked = ensure_repo_ready(root, repo_url=repo_url, interactive=interactive)
 
     # 3. Ensure .gitignore
     ensure_gitignore(root, stack, interactive=interactive)
@@ -80,16 +81,21 @@ def run_single_sync(
     # 4. Check Changes
     changes = get_git_status_changes(root)
     if not changes:
-        if remote in remotes and has_unpushed_commits(root, remote, active_branch):
+        remotes = get_remotes(root)
+        if remote in remotes and (remote_was_just_linked or has_unpushed_commits(root, remote, active_branch)):
             print("[INFO] Working tree clean, but unpushed commits exist. Pushing to GitHub...")
             if not dry_run:
-                push(root, remote, active_branch)
-                print(f"[SUCCESS] Pushed unpushed commits to {remote}/{active_branch}!")
+                try:
+                    push(root, remote, active_branch)
+                    print(f"\n[SUCCESS] Pushed all commits to GitHub ({remote}/{active_branch}) successfully!")
+                except GitError as e:
+                    print(f"\n[ERROR] Push failed: {e}")
+                    return False
             else:
                 print(f"[DRY-RUN] Would push to {remote}/{active_branch}")
             return True
         else:
-            print("[INFO] Working tree clean. Nothing to commit or push.")
+            print("[INFO] Working tree clean and up to date with remote. Nothing to push.")
             return True
 
     print(f"[CHANGES] Detected {len(changes)} modified/new file(s):")
@@ -127,7 +133,7 @@ def run_single_sync(
                 print("[INFO] Commit saved locally. Link a remote when you are ready to push.")
                 return True
         else:
-            print(f"[WARNING] Remote '{remote}' not configured. Run 'auto-push --setup' to link a GitHub repo.")
+            print(f"[WARNING] Remote '{remote}' not configured. Run 'auto-push <repo-url>' to link a GitHub repo.")
             return True
 
     print(f"[PUSHING] Pushing to GitHub ({remote}/{active_branch})...")
@@ -142,8 +148,14 @@ def run_single_sync(
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="auto-push",
-        description="Professional Multi-Language & Multi-Framework Git and GitHub automation.",
+        prog="pushpilot",
+        description="PushPilot - Intelligent Multi-Framework Git & GitHub Autopilot.",
+    )
+    parser.add_argument(
+        "repo_url",
+        nargs="?",
+        default=None,
+        help="Optional GitHub repository URL (e.g. https://github.com/user/repo.git). Automatically initializes git and links remote.",
     )
     parser.add_argument(
         "-m", "--message",
@@ -228,19 +240,20 @@ def main():
 
     # --setup command
     if args.setup:
-        ensure_repo_ready(root, interactive=False)
+        ensure_repo_ready(root, repo_url=args.repo_url, interactive=False)
         setup_remote_interactive(root)
         return
 
     # --watch mode
     if args.watch:
         stack = StackDetector.detect(root)
-        ensure_repo_ready(root, interactive=True)
+        ensure_repo_ready(root, repo_url=args.repo_url, interactive=True)
         ensure_gitignore(root, stack, interactive=True)
 
         def on_feature_complete(changes):
             run_single_sync(
                 root=root,
+                repo_url=args.repo_url,
                 message=args.message,
                 branch=args.branch,
                 remote=args.remote,
@@ -260,6 +273,7 @@ def main():
     # Default: One-command sync
     success = run_single_sync(
         root=root,
+        repo_url=args.repo_url,
         message=args.message,
         branch=args.branch,
         remote=args.remote,

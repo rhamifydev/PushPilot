@@ -116,22 +116,39 @@ def setup_remote_interactive(root: Path) -> str | None:
         return repo_url
 
 
-def ensure_repo_ready(root: Path, interactive: bool = True) -> bool:
-    """Ensures git is initialized and ready."""
+def ensure_repo_ready(root: Path, repo_url: str | None = None, interactive: bool = True) -> tuple[bool, bool]:
+    """Ensures git is initialized and ready.
+    Returns (is_ready, remote_was_just_linked).
+    """
     if not is_git_repo(root):
         print(f"[INFO] Initializing new Git repository in: {root}")
         code, stdout, stderr = run_git(["init"], cwd=root)
         if code != 0:
             raise GitError(f"Failed to initialize git repository: {stderr}")
-        # Set main as default branch
         run_git(["branch", "-M", "main"], cwd=root)
-        print("[OK] Git repository initialized with branch 'main'.")
+        print("[OK] Git repository initialized with default branch 'main'.")
 
     remotes = get_remotes(root)
-    if "origin" not in remotes and interactive:
-        setup_remote_interactive(root)
+    remote_was_just_linked = False
 
-    return True
+    if repo_url and repo_url.strip():
+        clean_url = repo_url.strip().strip("'\"")
+        if "origin" in remotes:
+            run_git(["remote", "set-url", "origin", clean_url], cwd=root)
+            print(f"[OK] Updated remote 'origin': {clean_url}")
+        else:
+            code, _, stderr = run_git(["remote", "add", "origin", clean_url], cwd=root)
+            if code != 0:
+                run_git(["remote", "set-url", "origin", clean_url], cwd=root)
+            print(f"[OK] Linked remote 'origin': {clean_url}")
+        run_git(["branch", "-M", "main"], cwd=root)
+        remote_was_just_linked = True
+    elif "origin" not in remotes and interactive:
+        linked_url = setup_remote_interactive(root)
+        if linked_url:
+            remote_was_just_linked = True
+
+    return True, remote_was_just_linked
 
 
 def get_git_status_changes(root: Path) -> list[tuple[str, str]]:
@@ -152,6 +169,18 @@ def get_git_status_changes(root: Path) -> list[tuple[str, str]]:
 
 def has_unpushed_commits(root: Path, remote: str = "origin", branch: str = "main") -> bool:
     """Check if local commits exist that are not on remote."""
+    # 1. Does local branch have any commits?
+    code, head_commit, _ = run_git(["rev-parse", "HEAD"], cwd=root)
+    if code != 0 or not head_commit:
+        return False  # No commits in repository
+
+    # 2. Check if remote tracking branch exists locally
+    code, remote_commit, _ = run_git(["rev-parse", "--verify", f"{remote}/{branch}"], cwd=root)
+    if code != 0:
+        # Remote tracking branch does not exist locally (branch never pushed/fetched)
+        return True
+
+    # 3. If remote tracking branch exists, check if local is ahead
     code, stdout, _ = run_git(["log", f"{remote}/{branch}..{branch}"], cwd=root)
     return code == 0 and bool(stdout.strip())
 
