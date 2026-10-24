@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autopush"
+version = "1.0.0"
+description = "Professional multi-framework and multi-language Git and GitHub automation CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Autopush Developers" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.scripts]
+auto-push = "autopush.cli:main"
+autopush = "autopush.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["autopush*"]
