@@ -198,13 +198,23 @@ def commit(root: Path, message: str) -> None:
 
 
 def pull_rebase(root: Path, remote: str, branch: str) -> bool:
-    code, stdout, stderr = run_git(["pull", "--rebase", remote, branch], cwd=root)
-    if code != 0:
-        # Check if merge conflict occurred
-        if "conflict" in (stderr + stdout).lower():
-            raise GitError(f"Merge conflict detected during pull rebase:\n{stderr or stdout}")
-        return False
-    return True
+    # Attempt 1: Standard pull rebase with autostash
+    code, stdout, stderr = run_git(["pull", "--rebase", "--autostash", remote, branch], cwd=root)
+    if code == 0:
+        return True
+
+    # Clean up any paused rebase attempt
+    run_git(["rebase", "--abort"], cwd=root)
+
+    # Attempt 2: Pull rebase preferring local project files on conflict (-X ours)
+    # This automatically resolves conflicts when GitHub initialized a default README or .gitignore
+    code, stdout, stderr = run_git(["pull", "--rebase", "-X", "ours", remote, branch], cwd=root)
+    if code == 0:
+        return True
+
+    # If still stuck, abort cleanly so user's work tree is preserved
+    run_git(["rebase", "--abort"], cwd=root)
+    return False
 
 
 def push(root: Path, remote: str = "origin", branch: str = "main") -> bool:
@@ -216,8 +226,8 @@ def push(root: Path, remote: str = "origin", branch: str = "main") -> bool:
 
     err = (stderr or stdout).lower()
     # If branch rejected because remote has commits not present locally:
-    if "fetch first" in err or "non-fast-forward" in err:
-        print("[INFO] Remote contains newer commits. Attempting automatic pull rebase before pushing...")
+    if "fetch first" in err or "non-fast-forward" in err or "rejected" in err:
+        print("[INFO] Remote contains newer commits (e.g. GitHub initial commit). Syncing with local project...")
         if pull_rebase(root, remote, branch):
             code, stdout, stderr = run_git(["push", "-u", remote, branch], cwd=root)
             if code == 0:

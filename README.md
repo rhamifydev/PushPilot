@@ -1,104 +1,111 @@
-# ⚡ AutoPush
+# 🚀 PushPilot
 
-> **Professional Multi-Language & Multi-Framework Git & GitHub Automation**  
-> One command to stage, generate conventional commit messages, link your GitHub repository, and push. Includes a **Feature-Complete File Watcher** that automatically syncs whenever you finish writing a feature.
+> **Intelligent Multi-Framework Git & GitHub Autopilot**  
+> One command to initialize Git, link your GitHub repository, generate conventional commits, and push. Includes a **Feature-Complete File Watcher** that automatically syncs code to GitHub whenever a feature is completed.
+
+[![GitHub](https://img.shields.io/badge/GitHub-rhamifydev%2FPushPilot-blue?logo=github)](https://github.com/rhamifydev/PushPilot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
-## 🌟 What AutoPush Does
+## 🌟 What PushPilot Does
 
-1. **One-Command Dev Workflow (`auto-push`)**:
-   - Devs type `auto-push` in any project terminal.
-   - If Git is not initialized, it initializes it with `main` branch.
-   - If no GitHub remote exists, it interactively prompts for your repo URL (HTTPS or SSH), links it, and configures upstream tracking.
-   - If `.gitignore` is missing, it auto-generates framework-tailored rules.
-   - Automatically detects modified, added, and deleted files.
-   - Generates a **Conventional Semantic Commit Message** (e.g. `feat(auth): implement login endpoint in FastAPI`).
-   - Stages, commits, and pushes directly to GitHub!
+1. **Zero-Config One-Command Setup (`pushpilot <github-url>`)**:
+   - Give it your GitHub repo URL once: `pushpilot https://github.com/username/repo.git`.
+   - If Git is not initialized, PushPilot initializes it with default branch `main`.
+   - Links the `origin` remote automatically.
+   - Detects if GitHub was initialized with a default README or `.gitignore` and merges/rebases seamlessly without conflicts.
+   - Generates a framework-tailored `.gitignore` if none exists.
+   - Stages all files, creates a conventional commit, and pushes directly to GitHub!
 
-2. **Feature-Completion File Watcher (`auto-push -w`)**:
-   - Devs start coding while running `auto-push -w`.
-   - The watcher monitors file changes while automatically ignoring build/cache folders (`node_modules`, `venv`, `target`, `dist`, `.next`, etc.).
-   - Employs an intelligent **Feature Settlement Timer**: as you rapidly edit components/tests/views, changes accumulate. When you finish editing and changes settle (e.g., 8s cooldown), AutoPush recognizes feature completion, crafts the semantic commit message, and pushes to GitHub.
+2. **Subsequent One-Command Push (`pushpilot` or `auto-push`)**:
+   - Devs just write `pushpilot` (or `auto-push`).
+   - Detects all modified/added/deleted files.
+   - Generates a **Conventional Semantic Commit Message** (e.g., `feat(auth): implement login endpoint in FastAPI`).
+   - Stages, commits, and pushes to GitHub in 2 seconds.
 
-3. **Multi-Language & Multi-Framework Intelligence**:
-   - **JavaScript / TypeScript**: React, Next.js, Vue, Nuxt, Angular, Svelte, Vite, Express, NestJS
+3. **Feature-Completion File Watcher (`pushpilot -w`)**:
+   - Devs code while running `pushpilot -w`.
+   - Monitors file changes while ignoring build folders (`node_modules`, `venv`, `target`, `dist`, `.next`, etc.).
+   - Uses an intelligent **Feature Settlement Timer**: as you rapidly edit components/tests/views, changes accumulate. When you finish editing and changes settle (e.g., 8s cooldown), PushPilot recognizes feature completion, crafts the semantic commit message, and pushes to GitHub.
+
+4. **Multi-Language & Multi-Framework Intelligence**:
+   - **JavaScript / TypeScript**: React, Next.js, Vue, Nuxt, Angular, Svelte, Vite, Node.js, Express, NestJS
    - **Python**: Django, FastAPI, Flask, standard Python, AI/ML
    - **Rust**: Cargo projects
    - **Go**: Go modules
-   - **Dart / Flutter**: Flutter mobile/web apps
+   - **Dart / Flutter**: Mobile & Web Flutter apps
    - **Java / Kotlin**: Spring Boot, Maven, Gradle
-   - **C# / .NET**: ASP.NET, .NET Core
+   - **C# / .NET**: ASP.NET Core, .NET solutions
    - **PHP**: Laravel, Symfony, Composer
-   - **Ruby**: Rails, Bundler
+   - **Ruby**: Ruby on Rails, Bundler
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Installation & Setup
 
-### Option A: Direct Command (Windows Shortcut)
-From your terminal inside this project directory:
+### Option 1: Direct in Project (Windows Runners Included)
+Run any of the included batch/PowerShell scripts:
 ```bash
 auto-push
-```
-Or with PowerShell:
-```powershell
-.\auto-push.ps1
+# or
+pushpilot
+# or
+pilot
 ```
 
-### Option B: System-Wide Global Command
+### Option 2: Install System-Wide Global Command
 Install once in editable mode:
 ```bash
 pip install -e .
 ```
-Now you can run `auto-push` or `autopush` in **any terminal window and any project on your computer!**
+Now `pushpilot`, `pilot`, `auto-push`, and `autopush` are accessible in **any terminal window and any project on your computer!**
 
 ---
 
 ## 🛠️ Usage Examples
 
-### 1. Instant One-Command Auto-Push
+### 1. Initialize & Link GitHub in One Step
 ```bash
-auto-push
+pushpilot https://github.com/rhamifydev/PushPilot.git
 ```
-*If your project does not have a GitHub remote yet, AutoPush prompts you for the repository link, links `origin`, sets branch to `main`, and pushes.*
+*Initializes Git if needed, sets default branch `main`, links remote `origin`, stages, commits, and pushes to GitHub.*
 
-### 2. Feature-Complete Auto-Watch Mode
-Keep this running in a terminal while you work on features:
+### 2. Instant Auto-Push (Subsequent uses)
 ```bash
-auto-push --watch
+pushpilot
 ```
-*Auto-pushes to GitHub whenever you finish coding a feature increment!*
+
+### 3. Continuous Feature-Complete Watcher
+```bash
+pushpilot --watch
+```
+*Watches files and pushes to GitHub whenever you finish coding a feature increment!*
 
 Customizing the feature settlement window:
 ```bash
-auto-push -w --cooldown 12
+pushpilot -w --cooldown 10
 ```
 
-### 3. Custom Commit Message
+### 4. Custom Commit Message
 ```bash
-auto-push -m "feat(payment): integrate Stripe checkout webhook"
+pushpilot -m "feat(payment): integrate Stripe checkout webhook"
 ```
 
-### 4. Inspect Detected Stack
-Check what AutoPush detects for your current project:
+### 5. Inspect Detected Project Stack
 ```bash
-auto-push --detect
+pushpilot --detect
 ```
 
-### 5. Setup / Change Linked GitHub Repo
+### 6. Interactive Setup / Update GitHub Remote
 ```bash
-auto-push --setup
-```
-
-### 6. Generate Framework-Specific `.gitignore`
-```bash
-auto-push --init-gitignore
+pushpilot --setup
 ```
 
 ### 7. Dry-Run (Preview what would happen)
 ```bash
-auto-push --dry-run
+pushpilot --dry-run
 ```
 
 ---
@@ -107,7 +114,7 @@ auto-push --dry-run
 
 | Command / Option | Description |
 | :--- | :--- |
-| `auto-push` | Run full auto-sync (inspect, stage, semantic commit, push) |
+| `pushpilot [URL]` | Run auto-sync (optionally initialize & link GitHub repository URL) |
 | `-w`, `--watch` | Continuous watcher mode with feature-completion settlement |
 | `--cooldown SEC` | Seconds of inactivity before triggering feature commit (default: 8s) |
 | `-m`, `--message MSG` | Override auto-generated message with a custom commit message |
