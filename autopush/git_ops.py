@@ -167,6 +167,26 @@ def get_git_status_changes(root: Path) -> list[tuple[str, str]]:
     return changes
 
 
+def get_git_diff_summary(root: Path, max_chars: int = 3500) -> str:
+    """Returns a concise diff summary of staged, unstaged, and untracked changes."""
+    _, diff_unstaged, _ = run_git(["diff", "--no-color"], cwd=root)
+    _, diff_staged, _ = run_git(["diff", "--cached", "--no-color"], cwd=root)
+    _, status_out, _ = run_git(["status", "--short"], cwd=root)
+
+    combined = []
+    if status_out:
+        combined.append(f"Changed files:\n{status_out.strip()}\n")
+    if diff_staged:
+        combined.append(f"Staged changes:\n{diff_staged.strip()}\n")
+    if diff_unstaged:
+        combined.append(f"Working tree changes:\n{diff_unstaged.strip()}\n")
+
+    full_text = "\n".join(combined)
+    if len(full_text) > max_chars:
+        return full_text[:max_chars] + "\n... [diff truncated]"
+    return full_text
+
+
 def has_unpushed_commits(root: Path, remote: str = "origin", branch: str = "main") -> bool:
     """Check if local commits exist that are not on remote."""
     # 1. Does local branch have any commits?

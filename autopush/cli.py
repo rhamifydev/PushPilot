@@ -22,6 +22,7 @@ from autopush.git_ops import (
     ensure_gitignore,
     ensure_repo_ready,
     get_current_branch,
+    get_git_diff_summary,
     get_git_status_changes,
     get_remotes,
     has_unpushed_commits,
@@ -52,6 +53,7 @@ def run_single_sync(
     remote: str = "origin",
     dry_run: bool = False,
     interactive: bool = True,
+    allow_ai: bool = True,
 ) -> bool:
     """Performs a full automated check, stage, commit, and push cycle."""
     # Disable interactive prompts if dry_run or stdin is not a terminal
@@ -105,8 +107,20 @@ def run_single_sync(
         print(f"   ... and {len(changes) - 8} more file(s)")
 
     # 5. Generate Commit Message
-    commit_msg = generate_commit_message(changes, stack, custom_msg=message)
-    print(f"[COMMIT] Generated Message: \"{commit_msg}\"")
+    diff_summary = get_git_diff_summary(root)
+    commit_msg, ai_source = generate_commit_message(
+        changes,
+        stack,
+        custom_msg=message,
+        root=root,
+        diff_summary=diff_summary,
+        allow_ai=allow_ai,
+    )
+    if ai_source:
+        print(f"[AI] Detected coding with AI: {ai_source}")
+        print(f"[COMMIT] AI-Generated Message: \"{commit_msg}\"")
+    else:
+        print(f"[COMMIT] Generated Message: \"{commit_msg}\"")
 
     if dry_run:
         print(f"[DRY-RUN] Would stage all files ('git add -A')")
@@ -207,13 +221,24 @@ def main():
         help="Simulate actions without staging, committing, or pushing.",
     )
     parser.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="Disable AI commit message generation and force default rule-based message.",
+    )
+    parser.add_argument(
+        "--ai",
+        action="store_true",
+        help="Explicitly enable AI commit message generation (auto-detected by default).",
+    )
+    parser.add_argument(
         "-v", "--version",
         action="version",
-        version=f"Autopush v{__version__}",
+        version=f"PushPilot v{__version__}",
     )
 
     args = parser.parse_args()
     root = Path.cwd()
+    allow_ai = not args.no_ai
 
     banner()
 
@@ -259,6 +284,7 @@ def main():
                 remote=args.remote,
                 dry_run=args.dry_run,
                 interactive=False,
+                allow_ai=allow_ai,
             )
 
         watcher = FeatureWatcher(
@@ -279,6 +305,7 @@ def main():
         remote=args.remote,
         dry_run=args.dry_run,
         interactive=True,
+        allow_ai=allow_ai,
     )
 
     if not success:

@@ -25,10 +25,10 @@
    - Generates a **Conventional Semantic Commit Message** (e.g., `feat(auth): implement login endpoint in FastAPI`).
    - Stages, commits, and pushes to GitHub in 2 seconds.
 
-3. **Feature-Completion File Watcher (`pushpilot -w`)**:
-   - Devs code while running `pushpilot -w`.
-   - Monitors file changes while ignoring build folders (`node_modules`, `venv`, `target`, `dist`, `.next`, etc.).
-   - Uses an intelligent **Feature Settlement Timer**: as you rapidly edit components/tests/views, changes accumulate. When you finish editing and changes settle (e.g., 8s cooldown), PushPilot recognizes feature completion, crafts the semantic commit message, and pushes to GitHub.
+3. **Internal AI Commit Intelligence (Auto-Detect)**:
+   - **Coding with AI?** If you are coding inside an AI-assisted environment (**Google Antigravity IDE**, **Cursor**, **Aider**, **Claude Code**, **Cline**) or have an AI API configured (**Gemini**, **OpenAI**, **Anthropic**, **Groq**, or local **Ollama**), PushPilot detects the active developer intent and git diff to generate **ultra-accurate, laser-focused Conventional Commit messages**.
+   - **Not coding with AI?** PushPilot instantly and seamlessly uses its **smart default heuristic engine** (zero dependencies, zero delay, offline-friendly).
+   - Use `--no-ai` to disable AI detection or `--ai` to force it.
 
 4. **Multi-Language & Multi-Framework Intelligence**:
    - **JavaScript / TypeScript**: React, Next.js, Vue, Nuxt, Angular, Svelte, Vite, Node.js, Express, NestJS
@@ -43,26 +43,33 @@
 
 ---
 
-## 🚀 Installation & Setup
+## 🚀 One-Command Installation for Developers
 
-### Option 1: Direct in Project (Windows Runners Included)
-Run any of the included batch/PowerShell scripts:
+Any developer can install and use **PushPilot** globally with a single command:
+
+### Option 1: Install Directly from GitHub (Works right now for anyone!)
 ```bash
-auto-push
-# or
-pushpilot
-# or
-push
-# or
-pilot
+# Recommended for CLI tools (pipx or uv)
+pipx install git+https://github.com/rhamifydev/PushPilot.git
+
+# Or via standard pip
+pip install git+https://github.com/rhamifydev/PushPilot.git
 ```
 
-### Option 2: Install System-Wide Global Command
-Install once in editable mode:
+### Option 2: Install from PyPI
+```bash
+pip install pushpilot
+# or
+pipx install pushpilot
+```
+
+### Option 3: Local / Development
+Clone the repo and run:
 ```bash
 pip install -e .
 ```
-Now `pilot`, `push`, `pushpilot`, `auto-push`, and `autopush` are accessible in **any terminal window and any project on your computer!**
+
+Once installed, the commands `pushpilot`, `pilot`, and `push` are available anywhere in your terminal!
 
 ---
 
@@ -125,5 +132,7 @@ pushpilot --dry-run
 | `--detect` | Print detected language, framework, ecosystem, and git status |
 | `--setup` | Interactively link or update GitHub repository URL |
 | `--init-gitignore` | Create/reset tailored `.gitignore` for the detected stack |
+| `--ai` | Explicitly enable AI-powered commit generation (auto-detected by default) |
+| `--no-ai` | Disable AI detection and force default rule-based conventional commit |
 | `--dry-run` | Simulate actions without staging, committing, or pushing |
 | `-v`, `--version` | Display version information |
