@@ -315,23 +315,42 @@ def classify_file_role(filepath: str) -> tuple[str, str]:
     ) or ".github" in parts:
         return "config", path_obj.stem
 
-    # Authentication
-    if any(k in filename or k in parts for k in ("auth", "login", "register", "token", "session", "user", "jwt")):
+    # Frontend Layouts & Wrappers (must not be treated as auth workflow)
+    if "layout" in filename or "layouts" in parts:
+        return "ui", "layout"
+
+    # Frontend Pages, Components & Views
+    if any(k in filename or k in parts for k in ("component", "components", "pages", "views", "screens", "widgets", "templates")):
+        # Extract meaningful feature folder if inside Pages or Components
+        feature_name = path_obj.stem
+        skip_dirs = {
+            "pages", "components", "resources", "js", "ts", "jsx", "tsx", "src", "views",
+            "partials", "partial", "shared", "common", "elements", "widgets", "layout", "layouts",
+            "base", "subviews", "fragments", "templates", "ui", "app"
+        }
+        for p in reversed(parts[:-1]):
+            if p.lower() not in skip_dirs:
+                feature_name = p
+                break
+        return "ui", feature_name
+
+    # API / Controllers / Routes / Endpoints
+    if any(k in filename or k in parts for k in ("api", "route", "routes", "controller", "controllers", "endpoint", "handler", "viewset", "rpc")):
+        stem = path_obj.stem.replace("Controller", "").replace("Handler", "")
+        return "api", stem or path_obj.stem
+
+    # Database / Models / Schemas / Migrations
+    if any(k in filename or k in parts for k in ("model", "models", "schema", "schemas", "entity", "entities", "migration", "migrations", "db")):
+        stem = path_obj.stem.replace("Model", "")
+        return "model", stem or path_obj.stem
+
+    # Authentication & Security (strict: genuine auth services/endpoints)
+    if any(k in filename for k in ("login", "register", "oauth", "password", "jwt", "session_guard", "two_factor")) or (
+        ("auth" in parts or "auth" in filename) and not ("layout" in filename or "author" in filename)
+    ):
         return "auth", path_obj.stem
 
-    # API / Controllers / Routes
-    if any(k in filename or k in parts for k in ("api", "route", "controller", "endpoint", "handler", "viewset", "rpc")):
-        return "api", path_obj.stem
-
-    # Database / Models / Schemas
-    if any(k in filename or k in parts for k in ("model", "models", "schema", "entity", "migration", "migrations", "db")):
-        return "model", path_obj.stem
-
-    # Frontend Components & Views
-    if any(k in filename or k in parts for k in ("component", "components", "pages", "app", "views", "screens", "widgets")):
-        return "ui", path_obj.stem
-
-    # Styling
+    # Styling & Visual
     if filename.endswith((".css", ".scss", ".sass", ".less", ".tailwind")):
         return "style", path_obj.stem
 

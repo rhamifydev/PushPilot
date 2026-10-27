@@ -25,61 +25,132 @@ class AiContext:
     is_coding_with_ai: bool
     source_name: str
     recent_task: Optional[str] = None
+    ai_actions: list[str] = None
+    ai_summary_title: Optional[str] = None
     provider: Optional[str] = None
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
     model_name: Optional[str] = None
 
+    def __post_init__(self):
+        if self.ai_actions is None:
+            self.ai_actions = []
 
-def detect_antigravity_session() -> Optional[tuple[str, str]]:
-    """Detects active Google Antigravity IDE session and extracts the latest user request."""
+def detect_antigravity_session(root: Path) -> Optional[tuple[str, Optional[str], list[str], Optional[str]]]:
+    """
+    Detects active Google Antigravity IDE session matching current project workspace.
+    Extracts:
+    1. AI file edit descriptions (what the AI actually implemented).
+    2. AI summary title (the feature name or heading).
+    3. Developer prompt (for supplemental context).
+    """
     try:
         brain_dir = Path.home() / ".gemini" / "antigravity-ide" / "brain"
         if not brain_dir.is_dir():
             return None
 
-        # Find recent session directory modified in the last 60 minutes
-        sessions = sorted(
-            [d for d in brain_dir.iterdir() if d.is_dir()],
-            key=lambda d: d.stat().st_mtime,
-            reverse=True,
-        )
-        if not sessions:
-            return None
-
-        latest_session = sessions[0]
-        # Check if modified within the last hour
         import time
-        if (time.time() - latest_session.stat().st_mtime) > 3600:
+        now = time.time()
+
+        # Collect all transcripts and sort by transcript file modification time
+        transcripts = []
+        for s in brain_dir.iterdir():
+            if not s.is_dir():
+                continue
+            t = s / ".system_generated" / "logs" / "transcript.jsonl"
+            if not t.exists():
+                t = s / "transcript.jsonl"
+            if t.exists():
+                try:
+                    transcripts.append((t, t.stat().st_mtime))
+                except Exception:
+                    pass
+
+        transcripts.sort(key=lambda x: x[1], reverse=True)
+        if not transcripts:
             return None
 
-        transcript_path = latest_session / ".system_generated" / "logs" / "transcript.jsonl"
-        if not transcript_path.exists():
-            transcript_path = latest_session / "transcript.jsonl"
-            if not transcript_path.exists():
-                return None
+        root_name = root.name.lower()
+        root_str = str(root).lower().replace("/", "\\")
+        root_str_fwd = str(root).lower().replace("\\", "/")
 
-        lines = transcript_path.read_text(encoding="utf-8", errors="replace").splitlines()
-        for line in reversed(lines):
-            line = line.strip()
-            if not line:
+        meta_patterns = [
+            r"^(git\s+push|push\s+|publish|release)",
+            r"^(proceed|yes|no|ok|okay|continue|thanks|thank you)\b",
+            r"^(am\s+still\s+not\s+safisfied|am\s+still\s+not\s+satisfied|commit message|why is it|why is the)",
+            r"^(is it the last update|can you update|how can i update)",
+        ]
+
+        # Search for a session that belongs to this project workspace
+        for transcript_path, mtime in transcripts:
+            if (now - mtime) > 172800:
                 continue
+
             try:
-                record = json.loads(line)
+                t_content = transcript_path.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 continue
 
-            if record.get("type") == "USER_INPUT":
-                content = record.get("content", "")
-                # Extract text inside <USER_REQUEST> tags if present
-                match = re.search(r"<USER_REQUEST>(.*?)</USER_REQUEST>", content, re.DOTALL)
-                task = match.group(1).strip() if match else content.strip()
-                if task:
-                    return ("Google Antigravity AI", task)
+            content_lower = t_content.lower()
+            if root_name not in content_lower and root_str not in content_lower and root_str_fwd not in content_lower:
+                continue
+
+            # Read lines in reverse to extract what the AI actually built
+            lines = t_content.splitlines()
+            task = None
+            ai_actions = []
+            heading_title = None
+
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except Exception:
+                    continue
+
+                # Check AI responses for feature headings and file modifications
+                if record.get("type") == "PLANNER_RESPONSE":
+                    content_str = record.get("content", "")
+                    if not heading_title and content_str:
+                        m_h = re.search(r"^###\s+([^|\n\r]+)", content_str, re.MULTILINE)
+                        if m_h:
+                            raw_h = m_h.group(1).strip()
+                            if not any(raw_h.lower().startswith(x) for x in ["summary", "implementation summary", "verification", "progress"]):
+                                heading_title = raw_h
+                            elif " - " in raw_h or ": " in raw_h:
+                                heading_title = re.split(r"[-:]", raw_h, maxsplit=1)[-1].strip()
+
+                    for call in record.get("tool_calls", []):
+                        name = call.get("name", "")
+                        if name in ("replace_file_content", "write_to_file", "multi_replace_file_content"):
+                            args = call.get("args", {})
+                            desc = args.get("Description", "") or args.get("Instruction", "")
+                            if desc:
+                                clean_desc = desc.strip(""' ")
+                                if clean_desc and clean_desc not in ai_actions:
+                                    ai_actions.append(clean_desc)
+                                if len(ai_actions) >= 5:
+                                    break
+
+                elif record.get("type") == "USER_INPUT" and not task:
+                    raw = record.get("content", "")
+                    match = re.search(r"<USER_REQUEST>(.*?)</USER_REQUEST>", raw, re.DOTALL)
+                    candidate = match.group(1).strip() if match else raw.strip()
+                    candidate_lower = candidate.lower().strip()
+                    if not any(re.search(pat, candidate_lower) for pat in meta_patterns):
+                        if len(candidate) > 5:
+                            task = candidate
+
+                if (ai_actions or heading_title) and task:
+                    break
+
+            if ai_actions or heading_title or task:
+                return ("Google Antigravity AI", task, ai_actions, heading_title)
     except Exception:
         pass
     return None
-
 
 def detect_aider_session(root: Path) -> Optional[tuple[str, str]]:
     """Detects active Aider chat session in repository."""
@@ -167,7 +238,7 @@ def detect_ai_context(root: Path) -> Optional[AiContext]:
     ollama_model = detect_local_ollama()
 
     # 3. Check active AI IDE/assistant sessions
-    antigravity_info = detect_antigravity_session()
+    antigravity_info = detect_antigravity_session(root)
     aider_info = detect_aider_session(root)
     cursor_info = detect_cursor_session(root)
     claude_info = detect_claude_session(root)
@@ -177,8 +248,11 @@ def detect_ai_context(root: Path) -> Optional[AiContext]:
     assistant_name = None
     assistant_task = None
 
+    ai_actions = []
+    ai_summary_title = None
+
     if antigravity_info:
-        assistant_name, assistant_task = antigravity_info
+        assistant_name, assistant_task, ai_actions, ai_summary_title = antigravity_info
     elif aider_info:
         assistant_name, assistant_task = aider_info
     elif cursor_info:
@@ -236,6 +310,8 @@ def detect_ai_context(root: Path) -> Optional[AiContext]:
         is_coding_with_ai=True,
         source_name=source_label,
         recent_task=assistant_task,
+        ai_actions=ai_actions,
+        ai_summary_title=ai_summary_title,
         provider=provider,
         api_key=api_key,
         model_name=model_name,
@@ -262,8 +338,12 @@ def query_llm_api(
         "- Return ONLY the single commit line.\n\n"
         f"Stack: {stack.language} ({stack.framework or 'None'})\n"
     )
+    if ctx.ai_summary_title:
+        prompt += f"Feature Implemented by AI: {ctx.ai_summary_title}\n"
+    if ctx.ai_actions:
+        prompt += f"AI File Modifications:\n- " + "\n- ".join(ctx.ai_actions[:3]) + "\n"
     if ctx.recent_task:
-        prompt += f"Active Developer Task: {ctx.recent_task[:300]}\n"
+        prompt += f"Active Developer Task: {ctx.recent_task[:200]}\n"
     prompt += f"Git Changes & Diff:\n{diff_summary[:2000]}\n\nCommit Message:"
 
     try:
@@ -400,28 +480,44 @@ def task_to_conventional_commit(
         flags=re.IGNORECASE,
     ).strip()
 
-    # Split off subordinate/conditional clauses (if..., when..., so that..., and use...)
-    parts = re.split(r"\b(if\b|when\b|so\s+that\b|in\s+order\s+to\b|and\s+use\b)", cleaned, maxsplit=1, flags=re.IGNORECASE)
+    # Strip contextual location openers like 'on the server and vps page, '
+    cleaned = re.sub(r"^(on\s+the\s+[^,]+,\s*)", "", cleaned, flags=re.IGNORECASE).strip()
+
+    # Convert click interaction phrasing: 'when i click X it should Y' -> 'Y on X click'
+    m_click = re.search(r"when\s+(?:i\s+)?click\s+(?:on\s+)?(.*?)\s+(?:it\s+should\s+|to\s+)(.*)", cleaned, re.IGNORECASE)
+    if m_click:
+        target = m_click.group(1).strip()
+        action = m_click.group(2).strip()
+        action = re.split(r"\b(as\s+narrated|and\s+many\s+other|and\s+so\s+on)\b", action, flags=re.IGNORECASE)[0].strip()
+        cleaned = f"{action} on {target} click"
+
+    # Split off subordinate/conditional clauses (if..., so that..., in order to...)
+    parts = re.split(r"\b(so\s+that\b|in\s+order\s+to\b|and\s+use\b|as\s+narrated\b)", cleaned, maxsplit=1, flags=re.IGNORECASE)
     if parts and parts[0].strip():
         cleaned = parts[0].strip()
 
-    # Determine primary file role
+    # 1. Determine dominant scope from actual changed files
+    comp_counts: dict[str, int] = {}
     roles: dict[str, int] = {}
-    for _, file_path in changes:
-        role, _ = classify_file_role(file_path)
+    for status, file_path in changes:
+        role, comp = classify_file_role(file_path)
         roles[role] = roles.get(role, 0) + 1
+        comp_clean = comp.lower().replace("layout", "").replace("index", "").strip()
+        if comp_clean and len(comp_clean) > 2:
+            comp_counts[comp_clean] = comp_counts.get(comp_clean, 0) + 1
 
-    primary_role = "core"
-    for r in ["auth", "api", "ai", "model", "ui", "service", "test", "docs", "config", "core"]:
-        if r in roles:
-            primary_role = r
-            break
+    if comp_counts:
+        scope = sorted(comp_counts.items(), key=lambda x: x[1], reverse=True)[0][0]
+    else:
+        scope = Path(changes[0][1]).stem.lower() if changes else "core"
 
-    # If changes involve ai commit / commit generator, use ai or commit scope
+    scope = re.sub(r"[^\w-]", "", scope)[:16] or "core"
+
+    # If changes involve ai commit / commit generator, use ai scope
     if any("ai" in f.lower() or "commit" in f.lower() for _, f in changes):
-        primary_role = "ai"
+        scope = "ai"
 
-    # Determine commit type
+    # 2. Determine commit type
     c_type = "feat"
     if re.search(r"\b(fix|resolve|bug|issue|error|broken|patch|prevent|handle error)\b", cleaned, re.IGNORECASE):
         c_type = "fix"
@@ -434,8 +530,8 @@ def task_to_conventional_commit(
     elif re.search(r"\b(chore|dependency|dependencies|bump|package|release|setup|install)\b", cleaned, re.IGNORECASE):
         c_type = "chore"
 
-    # Truncate to clean length if too long
-    cleaned = cleaned.rstrip(".! ")
+    # 3. Clean up subject line
+    cleaned = re.sub(r"[\s,\.:;!?\-_]+$", "", cleaned).strip()
     words = cleaned.split()
     if len(" ".join(words)) > 55:
         truncated = []
@@ -446,8 +542,82 @@ def task_to_conventional_commit(
                 break
         cleaned = " ".join(truncated)
 
-    return f"{c_type}({primary_role}): {cleaned.lower()}"
+    cleaned = re.sub(r"[\s,\.:;!?\-_]+$", "", cleaned).strip()
+    return f"{c_type}({scope}): {cleaned.lower()}"
 
+
+def synthesize_ai_implemented_feature(
+    ctx: AiContext,
+    changes: list[tuple[str, str]],
+    stack: ProjectStack,
+) -> Optional[str]:
+    """
+    Synthesizes a conventional commit message from what the AI actually implemented:
+    1. AI summary heading or feature name from the conversation.
+    2. Tool call descriptions / instructions showing what code the AI changed.
+    3. Developer prompt fallback.
+    """
+    # 1. Determine dominant scope from changed files
+    comp_counts: dict[str, int] = {}
+    for status, fp in changes:
+        role, comp = classify_file_role(fp)
+        comp_clean = comp.lower().replace("layout", "").replace("index", "").strip()
+        if comp_clean and len(comp_clean) > 2:
+            comp_counts[comp_clean] = comp_counts.get(comp_clean, 0) + 1
+
+    if comp_counts:
+        scope = sorted(comp_counts.items(), key=lambda x: x[1], reverse=True)[0][0]
+    else:
+        scope = Path(changes[0][1]).stem.lower() if changes else "core"
+
+    scope = re.sub(r"[^\w-]", "", scope)[:16] or "core"
+    if any("ai" in f.lower() or "commit" in f.lower() for _, f in changes):
+        scope = "ai"
+
+    fw_tag = f" in {stack.framework}" if stack.framework and stack.framework != "Generic Project" else ""
+
+    # 2. Priority 1: Use AI summary title (e.g. 'Redesign & Remote File Explorer Implementation')
+    if ctx.ai_summary_title:
+        title = ctx.ai_summary_title.strip().strip("#: ")
+        title = re.sub(r"\b(Implementation|Summary|Overview|Update|Feature)\b", "", title, flags=re.IGNORECASE).strip()
+        title = re.sub(r"[\s&/\\-]+", " ", title).strip()
+        if len(title) > 4:
+            c_type = "refactor" if ("redesign" in title.lower() or "refactor" in title.lower()) else "feat"
+            return f"{c_type}({scope}): implement {title.lower()}{fw_tag}"
+
+    # 3. Priority 2: Use AI file modification descriptions
+    if ctx.ai_actions:
+        top_edit = ctx.ai_actions[0].strip()
+        # Clean file paths out of description
+        cleaned = re.sub(r"\b(in|at|for|to)\s+[A-Za-z0-9_/\\-]+\.(jsx?|tsx?|php|py|vue|html|css|json)\b", "", top_edit, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\b[A-Za-z0-9_/\\-]+\.(jsx?|tsx?|php|py|vue|html|css|json)\b", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+        # Determine conventional commit type
+        c_type = "feat"
+        if re.search(r"^(fix|resolve|prevent|patch|handle)\b", cleaned, re.IGNORECASE):
+            c_type = "fix"
+        elif re.search(r"^(redesign|refactor|clean|cleanup|reorganize|optimize)\b", cleaned, re.IGNORECASE):
+            c_type = "refactor"
+        elif re.search(r"^(doc|docs|readme)\b", cleaned, re.IGNORECASE):
+            c_type = "docs"
+        elif re.search(r"^(test|tests)\b", cleaned, re.IGNORECASE):
+            c_type = "test"
+
+        words = cleaned.split()
+        if len(" ".join(words)) > 55:
+            words = words[:8]
+            cleaned = " ".join(words)
+        cleaned = re.sub(r"[\s,\.:;!?\-_]+$", "", cleaned).strip()
+
+        if cleaned and len(cleaned) > 5:
+            return f"{c_type}({scope}): {cleaned.lower()}{fw_tag}"
+
+    # 4. Priority 3: Fall back to developer task
+    if ctx.recent_task:
+        return task_to_conventional_commit(ctx.recent_task, changes, stack)
+
+    return None
 
 def generate_ai_commit_message(
     changes: list[tuple[str, str]],
@@ -472,11 +642,10 @@ def generate_ai_commit_message(
         if llm_msg:
             return llm_msg, f"{ctx.source_name} ({ctx.model_name})"
 
-    # 2. If an AI session with an active task was detected, synthesize from developer intent
-    if ctx.recent_task:
-        synthesized_msg = task_to_conventional_commit(ctx.recent_task, changes, stack)
-        if synthesized_msg:
-            return synthesized_msg, ctx.source_name
+    # 2. Synthesize what the AI actually implemented (feature summary & file modifications)
+    synthesized_msg = synthesize_ai_implemented_feature(ctx, changes, stack)
+    if synthesized_msg:
+        return synthesized_msg, ctx.source_name
 
     # 3. If AI environment detected (like Cursor or AI flag) but no task/API available,
     # generate an AI-tailored conventional message using stack and changes
