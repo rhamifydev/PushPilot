@@ -3,6 +3,7 @@
 > **Intelligent Multi-Framework Git & GitHub Autopilot**  
 > One command to initialize Git, link your GitHub repository, generate conventional commits, and push. Includes a **Feature-Complete File Watcher** that automatically syncs code to GitHub whenever a feature is completed.
 
+[![PyPI version](https://img.shields.io/pypi/v/pushpilot.svg?color=blue)](https://pypi.org/project/pushpilot/)
 [![GitHub](https://img.shields.io/badge/GitHub-rhamifydev%2FPushPilot-blue?logo=github)](https://github.com/rhamifydev/PushPilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
