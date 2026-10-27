@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from autopush import ui
 from autopush.detector import ProjectStack
 from autopush.git_ops import get_git_status_changes
 
@@ -81,13 +82,12 @@ class FeatureWatcher:
 
     def start(self):
         """Runs the monitoring loop."""
-        print("\n" + "=" * 65)
-        print(" AUTOPUSH WATCHER: FEATURE-DRIVEN AUTO-PUSH")
-        print("=" * 65)
-        print(f"Stack Detected   : {self.stack.language} ({self.stack.framework or 'General'})")
-        print(f"Watch Directory  : {self.root}")
-        print(f"Feature Cooldown : {self.settle_window}s settlement window")
-        print("Status           : [LISTENING] Ready for changes. Press Ctrl+C to stop.\n")
+        print(f"{ui.Style.BRIGHT_CYAN}{ui.Style.BOLD}╭── FEATURE-DRIVEN AUTO-PUSH WATCHER ────────────────────────╮{ui.Style.RESET}")
+        print(f"  {ui.Style.BOLD}Stack Detected  :{ui.Style.RESET} {self.stack.language} ({self.stack.framework or 'General'})")
+        print(f"  {ui.Style.BOLD}Watch Directory :{ui.Style.RESET} {self.root}")
+        print(f"  {ui.Style.BOLD}Cooldown Window :{ui.Style.RESET} {self.settle_window}s feature settlement")
+        print(f"  {ui.Style.BOLD}Status          :{ui.Style.RESET} {ui.Style.BRIGHT_GREEN}● Watching for changes{ui.Style.RESET} (Press Ctrl+C to stop)")
+        print(f"{ui.Style.BRIGHT_CYAN}╰────────────────────────────────────────────────────────────╯{ui.Style.RESET}\n")
 
         try:
             while True:
@@ -114,7 +114,7 @@ class FeatureWatcher:
                     sample_names = ", ".join(Path(f).name for f in list(self.changed_batch)[:3])
                     more = f" (+{len(self.changed_batch) - 3} more)" if len(self.changed_batch) > 3 else ""
                     print(
-                        f"\r[EDITING] {len(self.changed_batch)} file(s) active: {sample_names}{more} ... waiting for edits to settle",
+                        f"\r{ui.Style.BRIGHT_YELLOW}⚡ EDITING{ui.Style.RESET} {len(self.changed_batch)} file(s) active: {sample_names}{more} ... waiting for edits to settle   ",
                         end="",
                         flush=True,
                     )
@@ -127,15 +127,14 @@ class FeatureWatcher:
                     if remaining > 0 and self.changed_batch:
                         # Still counting down
                         print(
-                            f"\r[SETTLING] Feature completion countdown: {int(remaining) + 1}s remaining...   ",
+                            f"\r{ui.Style.BRIGHT_CYAN}⏳ SETTLING{ui.Style.RESET} Feature completion countdown: {ui.Style.BOLD}{int(remaining) + 1}s{ui.Style.RESET} remaining...   ",
                             end="",
                             flush=True,
                         )
                     elif remaining <= 0 and self.changed_batch:
                         # Feature settlement window passed! Trigger auto commit & push
-                        print("\n\n" + "-" * 65)
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"[FEATURE COMPLETE] Activity settled at {ts}. Starting auto-push...")
+                        print(f"\n\n{ui.Style.BRIGHT_MAGENTA}{ui.Style.BOLD}✨ FEATURE COMPLETE{ui.Style.RESET} Activity settled at {ts}. Starting auto-push...\n")
 
                         # Verify actual git status changes
                         git_changes = get_git_status_changes(self.root)
@@ -143,17 +142,17 @@ class FeatureWatcher:
                             try:
                                 self.on_feature_complete(git_changes)
                             except Exception as e:
-                                print(f"[ERROR] Auto-push failed: {e}")
+                                ui.error(f"Auto-push failed: {e}")
                         else:
-                            print("[INFO] Working tree is clean (no git changes staged or untracked).")
+                            ui.info("Working tree clean (no git changes staged or untracked).")
 
                         # Reset batch and update snapshot
                         self.changed_batch.clear()
                         self.last_activity_time = None
                         self.last_snapshot = get_tree_fingerprint(self.root)
-                        print("\n[LISTENING] Resuming watch mode for next feature...\n")
+                        print(f"\n{ui.Style.BRIGHT_GREEN}● Resuming watch mode for next feature...{ui.Style.RESET}\n")
 
                 time.sleep(self.poll_interval)
 
         except KeyboardInterrupt:
-            print("\n\n[INFO] Autopush watcher stopped by user.")
+            print(f"\n\n{ui.Style.BRIGHT_BLUE}ℹ PushPilot watcher stopped by user.{ui.Style.RESET}")

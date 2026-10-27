@@ -1,10 +1,11 @@
 """
-Autopush Command-Line Interface.
-Professional multi-language & multi-framework Git automation.
+PushPilot Command-Line Interface.
+Professional multi-language & multi-framework Git & GitHub automation.
 """
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 # Ensure UTF-8 console output on Windows
@@ -13,7 +14,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from autopush import __version__
+from autopush import __version__, ui
 from autopush.commit_gen import generate_commit_message
 from autopush.detector import StackDetector
 from autopush.git_ops import (
@@ -25,24 +26,15 @@ from autopush.git_ops import (
     get_git_diff_summary,
     get_git_status_changes,
     get_remotes,
+    get_upstream_branch,
     has_unpushed_commits,
     is_git_repo,
     push,
+    resolve_target_branch,
     setup_remote_interactive,
     stage_all,
 )
 from autopush.watcher import FeatureWatcher
-
-
-def banner():
-    print(
-        f"""
-╔═════════════════════════════════════════════════════════════╗
-║                   PUSHPILOT v{__version__}                          ║
-║   Intelligent Multi-Framework Git & GitHub Autopilot        ║
-╚═════════════════════════════════════════════════════════════╝
-"""
-    )
 
 
 def run_single_sync(
@@ -56,13 +48,21 @@ def run_single_sync(
     allow_ai: bool = True,
 ) -> bool:
     """Performs a full automated check, stage, commit, and push cycle."""
+    start_time = time.time()
+
     # Disable interactive prompts if dry_run or stdin is not a terminal
     if dry_run or not sys.stdin.isatty():
         interactive = False
 
     # 1. Detect Stack
     stack = StackDetector.detect(root)
-    print(f"[STACK] Detected: {stack.language} | Framework: {stack.framework or 'None'} | Ecosystem: {stack.ecosystem}")
+    framework_label = stack.framework or "Standard"
+    ui.badge(
+        "STACK",
+        f"{stack.language} ({framework_label})",
+        subtitle=f"Ecosystem: {stack.ecosystem}",
+        color=ui.Style.BRIGHT_CYAN,
+    )
 
     # 2. Ensure Git & Remote Setup
     ready, remote_was_just_linked = ensure_repo_ready(root, repo_url=repo_url, interactive=interactive)
@@ -70,43 +70,44 @@ def run_single_sync(
     # 3. Ensure .gitignore
     ensure_gitignore(root, stack, interactive=interactive)
 
-    # Active branch and remotes
-    active_branch = branch or get_current_branch(root)
+    # 4. Resolve Target Branch (community/group branch, upstream tracking, or active local branch)
+    active_branch, branch_source = resolve_target_branch(root, user_branch=branch)
     remotes = get_remotes(root)
 
-    print(f"[BRANCH] Active Branch : {active_branch}")
-    if remote in remotes:
-        print(f"[REMOTE] Target Remote : {remote} ({remotes[remote]})")
-    else:
-        print(f"[REMOTE] Warning: Remote '{remote}' is not configured.")
+    ui.badge("BRANCH", active_branch, subtitle=branch_source, color=ui.Style.BRIGHT_GREEN)
 
-    # 4. Check Changes
+    if remote in remotes:
+        ui.badge("REMOTE", f"{remote} → {remotes[remote]}", color=ui.Style.BRIGHT_BLUE)
+    else:
+        ui.warn(f"Remote '{remote}' is not configured.")
+
+    # 5. Check Changes
     changes = get_git_status_changes(root)
     if not changes:
-        remotes = get_remotes(root)
         if remote in remotes and (remote_was_just_linked or has_unpushed_commits(root, remote, active_branch)):
-            print("[INFO] Working tree clean, but unpushed commits exist. Pushing to GitHub...")
+            ui.info("Working tree clean, but unpushed commits exist. Pushing to GitHub...")
             if not dry_run:
                 try:
                     push(root, remote, active_branch)
-                    print(f"\n[SUCCESS] Pushed all commits to GitHub ({remote}/{active_branch}) successfully!")
+                    elapsed = f"{time.time() - start_time:.1f}s"
+                    ui.success(f"Pushed all commits to GitHub ({remote}/{active_branch}) in {elapsed}!")
                 except GitError as e:
-                    print(f"\n[ERROR] Push failed: {e}")
+                    ui.error(f"Push failed: {e}")
                     return False
             else:
-                print(f"[DRY-RUN] Would push to {remote}/{active_branch}")
+                ui.dry_run_badge(f"Would push unpushed commits to {remote}/{active_branch}")
             return True
         else:
-            print("[INFO] Working tree clean and up to date with remote. Nothing to push.")
+            ui.info("Working tree clean and up to date with remote. Nothing to push.")
             return True
 
-    print(f"[CHANGES] Detected {len(changes)} modified/new file(s):")
+    ui.badge("CHANGES", f"{len(changes)} file(s) modified/staged", color=ui.Style.BRIGHT_YELLOW)
     for status, file_path in changes[:8]:
-        print(f"   [{status or '?'}] {file_path}")
+        print(ui.format_change_item(status, file_path))
     if len(changes) > 8:
         print(f"   ... and {len(changes) - 8} more file(s)")
 
-    # 5. Generate Commit Message
+    # 6. Generate Commit Message
     diff_summary = get_git_diff_summary(root)
     commit_msg, ai_source = generate_commit_message(
         changes,
@@ -117,46 +118,46 @@ def run_single_sync(
         allow_ai=allow_ai,
     )
     if ai_source:
-        print(f"[AI] Detected coding with AI: {ai_source}")
-        print(f"[COMMIT] AI-Generated Message: \"{commit_msg}\"")
+        ui.badge("AI COMMIT", f'"{commit_msg}"', subtitle=f"Source: {ai_source}", color=ui.Style.BRIGHT_MAGENTA)
     else:
-        print(f"[COMMIT] Generated Message: \"{commit_msg}\"")
+        ui.badge("COMMIT", f'"{commit_msg}"', color=ui.Style.BRIGHT_WHITE)
 
     if dry_run:
-        print(f"[DRY-RUN] Would stage all files ('git add -A')")
-        print(f"[DRY-RUN] Would commit with message: \"{commit_msg}\"")
+        ui.dry_run_badge("Would stage all files ('git add -A')")
+        ui.dry_run_badge(f'Would commit with message: "{commit_msg}"')
         if remote in remotes:
-            print(f"[DRY-RUN] Would push to {remote}/{active_branch}")
+            ui.dry_run_badge(f"Would push to {remote}/{active_branch}")
         return True
 
-    # 6. Stage & Commit
-    print("[STAGING] Staging all files...")
+    # 7. Stage & Commit
+    ui.info("Staging all files ('git add -A')...")
     stage_all(root)
 
-    print("[COMMITTING] Committing changes...")
+    ui.info("Committing changes...")
     commit(root, commit_msg)
-    print("[SUCCESS] Changes committed successfully.")
+    ui.success("Changes committed locally.")
 
-    # 7. Push to Remote
+    # 8. Push to Remote
     remotes = get_remotes(root)
     if remote not in remotes:
-        print(f"\n[NOTICE] Remote '{remote}' not linked yet.")
+        ui.warn(f"Remote '{remote}' not linked yet.")
         if interactive:
             new_remote = setup_remote_interactive(root)
             if not new_remote:
-                print("[INFO] Commit saved locally. Link a remote when you are ready to push.")
+                ui.info("Commit saved locally. Link a remote when you are ready to push.")
                 return True
         else:
-            print(f"[WARNING] Remote '{remote}' not configured. Run 'auto-push <repo-url>' to link a GitHub repo.")
+            ui.warn(f"Remote '{remote}' not configured. Run 'pushpilot <repo-url>' to link a GitHub repo.")
             return True
 
-    print(f"[PUSHING] Pushing to GitHub ({remote}/{active_branch})...")
+    ui.badge("PUSHING", f"Pushing to GitHub ({remote}/{active_branch})...", color=ui.Style.BRIGHT_CYAN)
     try:
         push(root, remote, active_branch)
-        print(f"\n[SUCCESS] Feature pushed to GitHub ({remote}/{active_branch}) successfully!")
+        elapsed = f"{time.time() - start_time:.1f}s"
+        ui.success(f"Feature pushed to GitHub ({remote}/{active_branch}) in {elapsed}!")
         return True
     except GitError as e:
-        print(f"\n[ERROR] Push failed: {e}")
+        ui.error(f"Push failed:\n{e}")
         return False
 
 
@@ -192,7 +193,7 @@ def main():
         "-b", "--branch",
         type=str,
         default=None,
-        help="Target git branch (default: active branch).",
+        help="Target git branch (default: active/upstream branch, or 'main' for new repos).",
     )
     parser.add_argument(
         "-r", "--remote",
@@ -240,21 +241,22 @@ def main():
     root = Path.cwd()
     allow_ai = not args.no_ai
 
-    banner()
+    ui.banner(__version__)
 
     # --detect command
     if args.detect:
         stack = StackDetector.detect(root)
-        print("=" * 50)
-        print(" PROJECT STACK INSPECTION")
-        print("=" * 50)
-        print(f"Language   : {stack.language}")
-        print(f"Framework  : {stack.framework or 'None / Standard'}")
-        print(f"Ecosystem  : {stack.ecosystem}")
-        print(f"Build Tool : {stack.build_tool or 'None detected'}")
-        print(f"Git Repo   : {'Yes' if is_git_repo(root) else 'No (run auto-push to initialize)'}")
+        active_b, b_src = resolve_target_branch(root, user_branch=args.branch) if is_git_repo(root) else ("None", "N/A")
+        print(f"{ui.Style.BRIGHT_CYAN}{ui.Style.BOLD}╭── PROJECT STACK INSPECTION ────────────────────────────────╮{ui.Style.RESET}")
+        print(f"  {ui.Style.BOLD}Language   :{ui.Style.RESET} {stack.language}")
+        print(f"  {ui.Style.BOLD}Framework  :{ui.Style.RESET} {stack.framework or 'None / Standard'}")
+        print(f"  {ui.Style.BOLD}Ecosystem  :{ui.Style.RESET} {stack.ecosystem}")
+        print(f"  {ui.Style.BOLD}Build Tool :{ui.Style.RESET} {stack.build_tool or 'None detected'}")
+        print(f"  {ui.Style.BOLD}Git Branch :{ui.Style.RESET} {active_b} ({b_src})")
+        print(f"  {ui.Style.BOLD}Git Repo   :{ui.Style.RESET} {'Yes' if is_git_repo(root) else 'No (run pushpilot to initialize)'}")
         remotes = get_remotes(root) if is_git_repo(root) else {}
-        print(f"Remotes    : {remotes or 'None'}")
+        print(f"  {ui.Style.BOLD}Remotes    :{ui.Style.RESET} {remotes or 'None'}")
+        print(f"{ui.Style.BRIGHT_CYAN}╰────────────────────────────────────────────────────────────╯{ui.Style.RESET}")
         return
 
     # --init-gitignore command

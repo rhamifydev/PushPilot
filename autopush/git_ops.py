@@ -40,13 +40,50 @@ def is_git_repo(root: Path) -> bool:
 
 
 def get_current_branch(root: Path) -> str:
+    """Returns the name of the currently active branch."""
+    code, stdout, _ = run_git(["branch", "--show-current"], cwd=root)
+    if code == 0 and stdout.strip():
+        return stdout.strip()
     code, stdout, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     if code == 0 and stdout and stdout != "HEAD":
-        return stdout
+        return stdout.strip()
     code, stdout, _ = run_git(["symbolic-ref", "--short", "HEAD"], cwd=root)
     if code == 0 and stdout:
-        return stdout
+        return stdout.strip()
     return "main"
+
+
+def get_upstream_branch(root: Path) -> tuple[str | None, str | None]:
+    """Returns (remote_name, remote_branch) if current branch tracks an upstream branch."""
+    code, stdout, _ = run_git(["rev-parse", "--abbrev-ref", "@{u}"], cwd=root)
+    if code == 0 and stdout and "/" in stdout:
+        parts = stdout.strip().split("/", 1)
+        return parts[0], parts[1]
+    return None, None
+
+
+def resolve_target_branch(root: Path, user_branch: str | None = None) -> tuple[str, str]:
+    """
+    Resolves the exact branch to push to:
+    1. If user explicitly provided -b / --branch: use it.
+    2. If active branch tracks an upstream remote branch: use that branch.
+    3. If on an active branch (e.g. develop, feat/xyz, master): use that branch.
+    4. Fallback: defaults to 'main'.
+
+    Returns (branch_name, source_description).
+    """
+    if user_branch and user_branch.strip():
+        return user_branch.strip(), "specified by user"
+
+    up_remote, up_branch = get_upstream_branch(root)
+    if up_branch:
+        return up_branch, f"tracking {up_remote}/{up_branch}"
+
+    cur = get_current_branch(root)
+    if cur and cur != "HEAD":
+        return cur, "active branch"
+
+    return "main", "default branch"
 
 
 def get_remotes(root: Path) -> dict[str, str]:
@@ -106,8 +143,10 @@ def setup_remote_interactive(root: Path) -> str | None:
     code, _, stderr = run_git(["remote", "add", "origin", repo_url], cwd=root)
     if code == 0:
         print(f"[OK] Linked remote 'origin': {repo_url}")
-        # Standardize default branch to main if in initial state
-        run_git(["branch", "-M", "main"], cwd=root)
+        # If repo is completely fresh with no commits, standardize default branch to main
+        code_head, _, _ = run_git(["rev-parse", "HEAD"], cwd=root)
+        if code_head != 0:
+            run_git(["branch", "-M", "main"], cwd=root)
         return repo_url
     else:
         # Check if origin already existed and update it
@@ -141,7 +180,10 @@ def ensure_repo_ready(root: Path, repo_url: str | None = None, interactive: bool
             if code != 0:
                 run_git(["remote", "set-url", "origin", clean_url], cwd=root)
             print(f"[OK] Linked remote 'origin': {clean_url}")
-        run_git(["branch", "-M", "main"], cwd=root)
+        # If repo has no commits yet, ensure default initial branch is main
+        code_head, _, _ = run_git(["rev-parse", "HEAD"], cwd=root)
+        if code_head != 0:
+            run_git(["branch", "-M", "main"], cwd=root)
         remote_was_just_linked = True
     elif "origin" not in remotes and interactive:
         linked_url = setup_remote_interactive(root)

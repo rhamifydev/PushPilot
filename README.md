@@ -13,15 +13,27 @@
 
 ## ⚡ Instant Install
 
-Install PushPilot globally in a single command:
+### Option 1: Automated 1-Click Installer (Auto-Configures PATH & Suppresses Warnings)
 
+- **Windows (PowerShell)**:
+  ```powershell
+  irm https://raw.githubusercontent.com/rhamifydev/PushPilot/main/install.ps1 | iex
+  ```
+- **macOS / Linux / WSL**:
+  ```bash
+  curl -sSL https://raw.githubusercontent.com/rhamifydev/PushPilot/main/install.sh | bash
+  ```
+
+*(Automatically installs/upgrades PushPilot and adds Python's Scripts directory to your system PATH so it works immediately).*
+
+### Option 2: Standard `pip` or `pipx`
 ```bash
 pip install pushpilot
+# Or via pipx (isolated global CLI environment):
+pipx install pushpilot
 ```
 
-*(Or via [pipx](https://pypa.github.io/pipx/) for an isolated global CLI environment: `pipx install pushpilot`)*
-
-Once installed, the command `pushpilot` (or short aliases `pilot` and `push`) is instantly available in any terminal window and across all your projects!
+Once installed, the command `pushpilot` (or short aliases `pilot` and `push`) is instantly available in any terminal window across all your projects!
 
 ---
 
