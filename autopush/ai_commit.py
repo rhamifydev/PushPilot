@@ -128,7 +128,7 @@ def detect_antigravity_session(root: Path) -> Optional[tuple[str, Optional[str],
                             args = call.get("args", {})
                             desc = args.get("Description", "") or args.get("Instruction", "")
                             if desc:
-                                clean_desc = desc.strip(""' ")
+                                clean_desc = desc.strip("\"' ")
                                 if clean_desc and clean_desc not in ai_actions:
                                     ai_actions.append(clean_desc)
                                 if len(ai_actions) >= 5:
@@ -328,23 +328,27 @@ def query_llm_api(
         return None
 
     prompt = (
-        "You are an expert Git commit assistant. Generate ONE concise conventional commit message "
-        "describing the following changes.\n"
+        "You are an expert Git commit message writer. Generate ONE professional conventional commit message.\n"
         "Rules:\n"
-        "- Follow format: <type>(<scope>): <subject>\n"
-        "- Types allowed: feat, fix, docs, style, refactor, perf, test, chore, build, ci\n"
-        "- Keep under 72 characters.\n"
-        "- Use lowercase subject without a period at the end.\n"
-        "- Return ONLY the single commit line.\n\n"
+        "- Format: <type>: <descriptive subject>\n"
+        "- Do NOT use scope in parentheses. Write `feat: ...` not `feat(scope): ...`\n"
+        "- Types: feat, fix, docs, style, refactor, perf, test, chore, build, ci\n"
+        "- Subject must describe WHAT was built or changed in plain human language.\n"
+        "- Be specific: mention the UI pattern, layout technique, feature, or component by name.\n"
+        "- Good example: `feat: mobile-first database page layout with horizontal swipe carousel and compact banner`\n"
+        "- Bad example: `fix(store): update store view and interface components in React`\n"
+        "- Keep under 72 characters. Lowercase subject. No period at the end.\n"
+        "- Do NOT append framework names like 'in React' or 'in Next.js'.\n"
+        "- Return ONLY the single commit line, nothing else.\n\n"
         f"Stack: {stack.language} ({stack.framework or 'None'})\n"
     )
     if ctx.ai_summary_title:
-        prompt += f"Feature Implemented by AI: {ctx.ai_summary_title}\n"
+        prompt += f"Feature Implemented: {ctx.ai_summary_title}\n"
     if ctx.ai_actions:
-        prompt += f"AI File Modifications:\n- " + "\n- ".join(ctx.ai_actions[:3]) + "\n"
+        prompt += f"Code Changes Made:\n- " + "\n- ".join(ctx.ai_actions[:3]) + "\n"
     if ctx.recent_task:
-        prompt += f"Active Developer Task: {ctx.recent_task[:200]}\n"
-    prompt += f"Git Changes & Diff:\n{diff_summary[:2000]}\n\nCommit Message:"
+        prompt += f"Developer Task: {ctx.recent_task[:200]}\n"
+    prompt += f"Git Diff:\n{diff_summary[:2000]}\n\nCommit Message:"
 
     try:
         if ctx.provider == "gemini":
@@ -439,7 +443,7 @@ def query_llm_api(
 
 
 def clean_commit_line(text: str) -> Optional[str]:
-    """Validates and cleans a conventional commit string."""
+    """Validates and cleans a conventional commit string. Strips scope parentheses."""
     if not text:
         return None
     # Take the first non-empty line
@@ -450,7 +454,15 @@ def clean_commit_line(text: str) -> Optional[str]:
     # Check if matches conventional commit format
     pattern = r"^(feat|fix|docs|style|refactor|perf|test|chore|build|ci)(\([a-zA-Z0-9_\-\.\/]+\))?:\s*.+$"
     if re.match(pattern, candidate, re.IGNORECASE):
-        # Format properly
+        # Strip scope parentheses if present: feat(store): -> feat:
+        candidate = re.sub(
+            r"^(feat|fix|docs|style|refactor|perf|test|chore|build|ci)\([^)]+\):",
+            r"\1:",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+        # Strip trailing framework tags like "in React", "in Next.js"
+        candidate = re.sub(r"\s+in\s+(React|Next\.js|Vue\.js|Angular|Svelte|NestJS|Express\.js|Laravel|Django|Flask|Node\.js|Vite App)\s*$", "", candidate, flags=re.IGNORECASE)
         return candidate.rstrip(". ")
     return None
 
@@ -543,7 +555,7 @@ def task_to_conventional_commit(
         cleaned = " ".join(truncated)
 
     cleaned = re.sub(r"[\s,\.:;!?\-_]+$", "", cleaned).strip()
-    return f"{c_type}({scope}): {cleaned.lower()}"
+    return f"{c_type}: {cleaned.lower()}"
 
 
 def synthesize_ai_implemented_feature(
@@ -574,8 +586,6 @@ def synthesize_ai_implemented_feature(
     if any("ai" in f.lower() or "commit" in f.lower() for _, f in changes):
         scope = "ai"
 
-    fw_tag = f" in {stack.framework}" if stack.framework and stack.framework != "Generic Project" else ""
-
     # 2. Priority 1: Use AI summary title (e.g. 'Redesign & Remote File Explorer Implementation')
     if ctx.ai_summary_title:
         title = ctx.ai_summary_title.strip().strip("#: ")
@@ -583,7 +593,10 @@ def synthesize_ai_implemented_feature(
         title = re.sub(r"[\s&/\\-]+", " ", title).strip()
         if len(title) > 4:
             c_type = "refactor" if ("redesign" in title.lower() or "refactor" in title.lower()) else "feat"
-            return f"{c_type}({scope}): implement {title.lower()}{fw_tag}"
+            subject = f"implement {title.lower()}"
+            if len(subject) > 65:
+                subject = subject[:62].rsplit(" ", 1)[0]
+            return f"{c_type}: {subject}"
 
     # 3. Priority 2: Use AI file modification descriptions
     if ctx.ai_actions:
@@ -611,7 +624,7 @@ def synthesize_ai_implemented_feature(
         cleaned = re.sub(r"[\s,\.:;!?\-_]+$", "", cleaned).strip()
 
         if cleaned and len(cleaned) > 5:
-            return f"{c_type}({scope}): {cleaned.lower()}{fw_tag}"
+            return f"{c_type}: {cleaned.lower()}"
 
     # 4. Priority 3: Fall back to developer task
     if ctx.recent_task:
